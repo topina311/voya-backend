@@ -98,6 +98,35 @@ def create_booking():
     return jsonify({"status": "created"}), 201
 
 
+@app.patch("/api/bookings/<booking_id>")
+def update_booking(booking_id):
+    payload = request.get_json(force=True, silent=True) or {}
+    service = get_sheets_service()
+    result = service.spreadsheets().values().get(
+        spreadsheetId=SHEET_ID, range=DATA_RANGE
+    ).execute()
+    rows = result.get("values", [])
+    for idx, row in enumerate(rows):
+        if row and row[0] == booking_id:
+            padded = row + [""] * (len(HEADERS) - len(row))
+            record = dict(zip(HEADERS, padded))
+            existing_log = record.get("log", "")
+            record.update({k: v for k, v in payload.items() if k in HEADERS and k != "log"})
+            if "log" in payload:
+                new_line = payload["log"] if isinstance(payload["log"], str) else "\n".join(payload["log"])
+                record["log"] = (existing_log + "\n" + new_line).strip("\n") if existing_log else new_line
+            new_row = [record.get(h, "") for h in HEADERS]
+            sheet_row_number = idx + 2  # +2: header row + 1-index
+            service.spreadsheets().values().update(
+                spreadsheetId=SHEET_ID,
+                range=f"Sheet1!A{sheet_row_number}:M{sheet_row_number}",
+                valueInputOption="RAW",
+                body={"values": [new_row]},
+            ).execute()
+            return jsonify({"status": "updated", "booking_id": booking_id})
+    return jsonify({"error": "booking_id not found"}), 404
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8899))
     app.run(host="0.0.0.0", port=port)
