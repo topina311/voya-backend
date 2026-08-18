@@ -1,0 +1,5 @@
+Flask==3.0.3
+flask-cors==4.0.1
+google-auth==2.35.0
+google-api-python-client==2.147.0
+gunicorn==22.0.0
