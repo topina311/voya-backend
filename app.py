@@ -14,6 +14,7 @@ Required environment variables:
 Endpoints:
   GET  /api/bookings   -> JSON array of bookings (newest first)
   POST /api/bookings   -> append one booking (JSON body)
+  GET  /api/tours      -> JSON array of visible tours from the catalog sheet
   GET  /healthz        -> simple health check
 """
 import json
@@ -138,10 +139,20 @@ def update_booking(booking_id):
 @app.get("/api/tours")
 def list_tours():
     """Read the tour catalog from the Google Sheet (Voya Tour Catalog)."""
-    service = get_sheets_service()
-    result = service.spreadsheets().values().get(
-        spreadsheetId=TOUR_SHEET_ID, range=TOUR_RANGE
-    ).execute()
+    try:
+        service = get_sheets_service()
+        result = service.spreadsheets().values().get(
+            spreadsheetId=TOUR_SHEET_ID, range=TOUR_RANGE
+        ).execute()
+    except Exception as exc:  # sheet unreachable / bad id / auth failure
+        app.logger.error(
+            "GET /api/tours failed to read sheet %s range %s: %s",
+            TOUR_SHEET_ID, TOUR_RANGE, exc,
+        )
+        return jsonify({
+            "error": "tour catalog unavailable",
+            "detail": str(exc),
+        }), 500
     rows = result.get("values", [])
     tours = []
     for row in rows:
