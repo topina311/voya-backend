@@ -33,6 +33,14 @@ HEADERS = ["booking_id", "tour", "pax", "pickup", "date", "status", "sla",
 DATA_RANGE = "Sheet1!A2:M2000"
 APPEND_RANGE = "Sheet1!A:M"
 
+# ── Voya Tour Catalog (Google Sheets as the tour database) ──
+# Columns: id, name, category, price, rating, reviews, image, desc,
+#          visible, hero, sort  (extra columns are ignored — safe to add more later)
+TOUR_SHEET_ID = os.environ.get("GOOGLE_TOUR_SHEET_ID", SHEET_ID)
+TOUR_HEADERS = ["id", "name", "category", "price", "rating", "reviews",
+                "image", "desc", "visible", "hero", "sort"]
+TOUR_RANGE = "Tours!A2:K2000"
+
 
 def get_sheets_service():
     creds = Credentials(
@@ -125,6 +133,37 @@ def update_booking(booking_id):
             ).execute()
             return jsonify({"status": "updated", "booking_id": booking_id})
     return jsonify({"error": "booking_id not found"}), 404
+
+
+@app.get("/api/tours")
+def list_tours():
+    """Read the tour catalog from the Google Sheet (Voya Tour Catalog)."""
+    service = get_sheets_service()
+    result = service.spreadsheets().values().get(
+        spreadsheetId=TOUR_SHEET_ID, range=TOUR_RANGE
+    ).execute()
+    rows = result.get("values", [])
+    tours = []
+    for row in rows:
+        if not row or not row[0]:
+            continue
+        padded = row + [""] * (len(TOUR_HEADERS) - len(row))
+        record = dict(zip(TOUR_HEADERS, padded))
+        # คอลัมน์ visible: เฉพาะ TRUE เท่านั้นที่แสดง (ค่าว่าง = แสดงตามเดิม)
+        vis = str(record.get("visible", "")).strip().upper()
+        if vis == "FALSE":
+            continue
+        # แปลงตัวเลขให้เป็นค่าเดิม (rating/reviews/sort)
+        try:
+            record["rating"] = float(record["rating"]) if record["rating"] else 0
+        except ValueError:
+            record["rating"] = 0
+        try:
+            record["reviews"] = int(float(record["reviews"])) if record["reviews"] else 0
+        except ValueError:
+            record["reviews"] = 0
+        tours.append(record)
+    return jsonify(tours)
 
 
 if __name__ == "__main__":
